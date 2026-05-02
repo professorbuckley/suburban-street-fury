@@ -119,7 +119,51 @@
       box-shadow: 3px 3px 0 #7f1d1d;
     }
 
+
+    .mobile-controls {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 18px;
+      display: none;
+      justify-content: space-between;
+      padding: 0 22px;
+      pointer-events: none;
+      z-index: 6;
+    }
+
+    .mobile-control {
+      width: 74px;
+      height: 74px;
+      border: 4px solid #111827;
+      background: rgba(250, 204, 21, .88);
+      color: #111827;
+      font-size: 42px;
+      line-height: 1;
+      font-weight: bold;
+      box-shadow: 5px 5px 0 rgba(17, 24, 39, .65);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      pointer-events: auto;
+    }
+
+    .mobile-control:active {
+      transform: translate(3px, 3px);
+      box-shadow: 2px 2px 0 rgba(17, 24, 39, .65);
+    }
+
+    @media (hover: none), (pointer: coarse) {
+      .mobile-controls { display: flex; }
+      .hud { font-size: 14px; }
+      .game-wrap { width: min(96vw, 520px); }
+    }
+
     .tiny { font-size: 13px; color: #cbd5e1; }
+
   </style>
 </head>
 <body>
@@ -131,16 +175,21 @@
       <div>Time: <span id="time">30</span></div>
     </div>
 
+    <div class="mobile-controls" aria-hidden="true">
+      <button class="mobile-control" id="leftBtn" type="button">←</button>
+      <button class="mobile-control" id="rightBtn" type="button">→</button>
+    </div>
+
     <div id="startScreen" class="screen">
       <h1>Suburban<br>Street Fury</h1>
       <p>You are late for soccer practice. The cul-de-sac has other plans.</p>
       <div class="instructions">
-        Use the LEFT and RIGHT arrow keys to steer.<br><br>
+        Use LEFT and RIGHT arrow keys on desktop, or tap the on-screen arrows on mobile.<br><br>
         Dodge landscaper trucks, dog walkers, and cars backing out of driveways.<br><br>
         Survive 30 seconds. Score as much as possible.
       </div>
       <button id="startBtn">Start Game</button>
-      <p class="tiny">Click start, then use your keyboard.</p>
+      <p class="tiny">Click or tap Start, then steer left and right.</p>
     </div>
 
     <div id="gameOverScreen" class="screen hidden">
@@ -162,6 +211,8 @@
     const gameOverScreen = document.getElementById('gameOverScreen');
     const startBtn = document.getElementById('startBtn');
     const restartBtn = document.getElementById('restartBtn');
+    const leftBtn = document.getElementById('leftBtn');
+    const rightBtn = document.getElementById('rightBtn');
     const finalScoreEl = document.getElementById('finalScore');
     const gameOverTitle = document.getElementById('gameOverTitle');
     const gameOverText = document.getElementById('gameOverText');
@@ -1019,6 +1070,29 @@
         e.preventDefault();
       }
     });
+
+
+
+    function bindMobileControl(button, keyName) {
+      const press = e => {
+        keys[keyName] = true;
+        e.preventDefault();
+      };
+      const release = e => {
+        keys[keyName] = false;
+        e.preventDefault();
+      };
+
+      button.addEventListener('pointerdown', press);
+      button.addEventListener('pointerup', release);
+      button.addEventListener('pointercancel', release);
+      button.addEventListener('pointerleave', release);
+      button.addEventListener('contextmenu', e => e.preventDefault());
+    }
+
+
+    bindMobileControl(leftBtn, 'ArrowLeft');
+    bindMobileControl(rightBtn, 'ArrowRight');
 
     startBtn.addEventListener('click', startGame);
     restartBtn.addEventListener('click', startGame);
