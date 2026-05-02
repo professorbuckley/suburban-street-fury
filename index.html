@@ -11,6 +11,7 @@
       margin: 0;
       min-height: 100vh;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
       background: #1f2933;
@@ -27,6 +28,12 @@
       background: #3f7f4f;
       box-shadow: 0 20px 60px rgba(0,0,0,.45);
       overflow: hidden;
+    }
+
+    @media (max-width: 768px), (pointer: coarse) {
+      .game-wrap {
+        margin-bottom: 92px;
+      }
     }
 
     canvas {
@@ -119,52 +126,48 @@
       box-shadow: 3px 3px 0 #7f1d1d;
     }
 
-
+    .tiny { font-size: 13px; color: #cbd5e1; }
+  
     .mobile-controls {
-      position: absolute;
-      left: 0;
-      right: 0;
-      bottom: 18px;
+      width: min(94vw, 520px);
+      margin-top: -72px;
       display: none;
       justify-content: space-between;
-      padding: 0 22px;
+      padding: 0 18px;
       pointer-events: none;
-      z-index: 6;
+      z-index: 30;
     }
 
-    .mobile-control {
-      width: 74px;
-      height: 74px;
-      border: 4px solid #111827;
-      background: rgba(250, 204, 21, .88);
-      color: #111827;
-      font-size: 42px;
-      line-height: 1;
+    .mobile-controls button {
+      width: 64px;
+      height: 64px;
+      padding: 0;
+      background: #111827;
+      color: #facc15;
+      border: 3px solid #facc15;
+      font-family: "Courier New", monospace;
+      font-size: 30px;
       font-weight: bold;
-      box-shadow: 5px 5px 0 rgba(17, 24, 39, .65);
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      line-height: 1;
+      box-shadow: 4px 4px 0 #7c2d12;
+      pointer-events: auto;
+      touch-action: none;
       user-select: none;
       -webkit-user-select: none;
-      touch-action: none;
-      pointer-events: auto;
     }
 
-    .mobile-control:active {
-      transform: translate(3px, 3px);
-      box-shadow: 2px 2px 0 rgba(17, 24, 39, .65);
+    .mobile-controls button:active {
+      transform: translate(2px, 2px);
+      box-shadow: 2px 2px 0 #7c2d12;
     }
 
-    @media (hover: none), (pointer: coarse) {
-      .mobile-controls { display: flex; }
-      .hud { font-size: 14px; }
-      .game-wrap { width: min(96vw, 520px); }
+    @media (max-width: 768px), (pointer: coarse) {
+      .mobile-controls.mobile-visible {
+        display: flex;
+      }
     }
 
-    .tiny { font-size: 13px; color: #cbd5e1; }
-
-  </style>
+</style>
 </head>
 <body>
   <div class="game-wrap">
@@ -175,21 +178,16 @@
       <div>Time: <span id="time">30</span></div>
     </div>
 
-    <div class="mobile-controls" aria-hidden="true">
-      <button class="mobile-control" id="leftBtn" type="button">←</button>
-      <button class="mobile-control" id="rightBtn" type="button">→</button>
-    </div>
-
     <div id="startScreen" class="screen">
       <h1>Suburban<br>Street Fury</h1>
       <p>You are late for soccer practice. The cul-de-sac has other plans.</p>
       <div class="instructions">
-        Use LEFT and RIGHT arrow keys on desktop, or tap the on-screen arrows on mobile.<br><br>
+        Use LEFT and RIGHT arrow keys on desktop.<br>On mobile, tap the arrows below the frame.<br><br>
         Dodge landscaper trucks, dog walkers, and cars backing out of driveways.<br><br>
         Survive 30 seconds. Score as much as possible.
       </div>
       <button id="startBtn">Start Game</button>
-      <p class="tiny">Click or tap Start, then steer left and right.</p>
+      <p class="tiny">Click start, then steer with keyboard or mobile arrows.</p>
     </div>
 
     <div id="gameOverScreen" class="screen hidden">
@@ -198,6 +196,12 @@
       <p>Final Score: <strong id="finalScore">0</strong></p>
       <button id="restartBtn">Play Again</button>
     </div>
+  </div>
+
+
+  <div class="mobile-controls" id="mobileControls" aria-label="Mobile steering controls">
+    <button id="leftBtn" type="button" aria-label="Steer left">◀</button>
+    <button id="rightBtn" type="button" aria-label="Steer right">▶</button>
   </div>
 
   <script>
@@ -211,8 +215,6 @@
     const gameOverScreen = document.getElementById('gameOverScreen');
     const startBtn = document.getElementById('startBtn');
     const restartBtn = document.getElementById('restartBtn');
-    const leftBtn = document.getElementById('leftBtn');
-    const rightBtn = document.getElementById('rightBtn');
     const finalScoreEl = document.getElementById('finalScore');
     const gameOverTitle = document.getElementById('gameOverTitle');
     const gameOverText = document.getElementById('gameOverText');
@@ -417,11 +419,53 @@
       return true;
     }
 
+
+    const mobileControls = document.getElementById('mobileControls');
+    const leftBtn = document.getElementById('leftBtn');
+    const rightBtn = document.getElementById('rightBtn');
+
+    function showMobileControls() {
+      if (mobileControls) mobileControls.classList.add('mobile-visible');
+    }
+
+    function hideMobileControls() {
+      if (mobileControls) mobileControls.classList.remove('mobile-visible');
+      keys.ArrowLeft = false;
+      keys.ArrowRight = false;
+    }
+
+    function bindSteerButton(button, keyName) {
+      if (!button) return;
+
+      const press = e => {
+        e.preventDefault();
+        keys[keyName] = true;
+      };
+
+      const release = e => {
+        e.preventDefault();
+        keys[keyName] = false;
+      };
+
+      button.addEventListener('pointerdown', press);
+      button.addEventListener('pointerup', release);
+      button.addEventListener('pointercancel', release);
+      button.addEventListener('pointerleave', release);
+
+      button.addEventListener('touchstart', press, { passive: false });
+      button.addEventListener('touchend', release, { passive: false });
+      button.addEventListener('touchcancel', release, { passive: false });
+    }
+
+    bindSteerButton(leftBtn, 'ArrowLeft');
+    bindSteerButton(rightBtn, 'ArrowRight');
+
     function startGame() {
       initAudio();
       startMusic();
       resetGame();
       gameState = 'playing';
+      showMobileControls();
       startScreen.classList.add('hidden');
       gameOverScreen.classList.add('hidden');
       cancelAnimationFrame(animationId);
@@ -430,6 +474,7 @@
 
     function endGame(won = false) {
       gameState = 'over';
+      hideMobileControls();
       stopMusic();
       won ? playWinSound() : playCrashSound();
       cancelAnimationFrame(animationId);
@@ -1070,29 +1115,6 @@
         e.preventDefault();
       }
     });
-
-
-
-    function bindMobileControl(button, keyName) {
-      const press = e => {
-        keys[keyName] = true;
-        e.preventDefault();
-      };
-      const release = e => {
-        keys[keyName] = false;
-        e.preventDefault();
-      };
-
-      button.addEventListener('pointerdown', press);
-      button.addEventListener('pointerup', release);
-      button.addEventListener('pointercancel', release);
-      button.addEventListener('pointerleave', release);
-      button.addEventListener('contextmenu', e => e.preventDefault());
-    }
-
-
-    bindMobileControl(leftBtn, 'ArrowLeft');
-    bindMobileControl(rightBtn, 'ArrowRight');
 
     startBtn.addEventListener('click', startGame);
     restartBtn.addEventListener('click', startGame);
