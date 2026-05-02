@@ -23,7 +23,7 @@
     .game-wrap {
       position: relative;
       width: min(94vw, 520px);
-      aspect-ratio: 9 / 14;
+      aspect-ratio: 9 / 12.5;
       border: 6px solid #111827;
       background: #3f7f4f;
       box-shadow: 0 20px 60px rgba(0,0,0,.45);
@@ -32,7 +32,7 @@
 
     @media (max-width: 768px), (pointer: coarse) {
       .game-wrap {
-        margin-bottom: 92px;
+        margin-bottom: 82px;
       }
     }
 
@@ -130,7 +130,7 @@
   
     .mobile-controls {
       width: min(94vw, 520px);
-      margin-top: -72px;
+      margin-top: -64px;
       display: none;
       justify-content: space-between;
       padding: 0 18px;
@@ -171,7 +171,7 @@
 </head>
 <body>
   <div class="game-wrap">
-    <canvas id="game" width="360" height="560"></canvas>
+    <canvas id="game" width="360" height="500"></canvas>
 
     <div class="hud">
       <div>Score: <span id="score">0</span></div>
@@ -264,9 +264,9 @@
       let step = 0;
       musicTimer = setInterval(() => {
         if (gameState !== 'playing') return;
-        playTone(melody[step % melody.length], .075, 'square', .026);
-        if (step % 2 === 0) playTone(bass[(step / 2) % bass.length], .11, 'triangle', .022);
-        if (step % 4 === 2) playTone(740, .025, 'square', .012);
+        playTone(melody[step % melody.length], .075, 'square', .04);
+        if (step % 2 === 0) playTone(bass[(step / 2) % bass.length], .11, 'triangle', .032);
+        if (step % 4 === 2) playTone(740, .025, 'square', .018);
         step++;
       }, 150);
     }
