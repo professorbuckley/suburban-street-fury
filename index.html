@@ -245,9 +245,11 @@
       spawnTimer = 0;
       elapsed = 0;
 
-      for (let y = -190; y < H + 220; y += 130) {
+      // Fixed neighborhood rhythm: each side gets its own evenly spaced row.
+      // This prevents houses from stacking or overlapping as they recycle.
+      for (let y = -210; y < H + 250; y += 118) {
         houses.push(makeHouse('left', y));
-        houses.push(makeHouse('right', y + 62));
+        houses.push(makeHouse('right', y + 59));
       }
 
       for (let i = 0; i < 36; i++) {
@@ -274,7 +276,19 @@
       ];
       const p = palettes[Math.floor(Math.random() * palettes.length)];
       const x = side === 'left' ? 16 : W - 70;
-      return { side, x, y, w: 54, h: 42, garage: side === 'left' ? x + 18 : x - 2, color:p.body, roof:p.roof, trim:p.trim };
+      const drivewayX = side === 'left' ? x + 22 : x + 10;
+      return {
+        side,
+        x,
+        y,
+        w: 54,
+        h: 42,
+        drivewayX,
+        drivewayY: y + 42,
+        color:p.body,
+        roof:p.roof,
+        trim:p.trim
+      };
     }
 
     function startGame() {
@@ -336,8 +350,9 @@
 
       houses.forEach(h => {
         h.y += worldSpeed * dt;
-        if (h.y > H + 90) h.y = -150;
+        h.drivewayY = h.y + 42;
       });
+      recycleHouses();
 
       lawnDetails.forEach(d => {
         d.y += worldSpeed * dt;
@@ -361,24 +376,25 @@
         if (obs.type === 'driveway') {
           const h = houses[obs.houseIndex];
           if (h) {
-            obs.y = h.y + 39 + obs.drivewayOffsetY;
-            obs.startX = obs.side === 'left' ? h.x + 28 : h.x - 36;
+            const d = drivewayForHouse(h);
+            obs.y = d.carY;
+            obs.startX = d.carStartX;
             obs.targetX = obs.side === 'left' ? roadX - 8 : roadX + roadW - obs.w + 8;
           }
           const nextX = obs.side === 'left'
             ? Math.min(obs.targetX, obs.x + obs.vx * dt)
             : Math.max(obs.targetX, obs.x + obs.vx * dt);
 
-          // Neighborhood etiquette: driveway cars must wait for dog walkers.
-          // They remain tied to their driveway, but pause before entering a dog walker's path.
+          // Driveway cars do not bounce or get pushed around. They either reverse outward
+          // or pause in place when another neighborhood object is in their path.
           const proposed = { ...obs, x: nextX };
-          const wouldClipDog = obstacles.some(other =>
+          const pathIsBlocked = obstacles.some(other =>
             other !== obs &&
-            other.type === 'dogwalker' &&
             expandedOverlap(proposed, other, 10, 8)
           );
 
-          if (!wouldClipDog) obs.x = nextX;
+          if (!pathIsBlocked) obs.x = nextX;
+          obs.waiting = pathIsBlocked;
           obs.progress = Math.min(1, Math.abs(obs.x - obs.startX) / Math.max(1, Math.abs(obs.targetX - obs.startX)));
         } else if (obs.vx) {
           obs.x += obs.vx * dt;
@@ -392,8 +408,8 @@
 
       obstacles = obstacles.filter(obs => obs.y < H + 90 && obs.y > -130 && obs.x > -90 && obs.x < W + 90);
 
-      // Final safeguards: keep all moving neighborhood hazards from visually colliding.
-      keepDrivewayCarsOffDogWalkers();
+      // Do not reposition obstacles after they interact. Sudden correction caused visible jumping.
+      // Spacing is handled during spawning and driveway cars simply pause when blocked.
       separateOverlappingObstacles();
 
       for (const obs of obstacles) {
@@ -405,6 +421,42 @@
 
       score += Math.floor(dt * 12);
       updateHud();
+    }
+
+    function recycleHouses() {
+      const spacing = 118;
+      ['left', 'right'].forEach(side => {
+        const sideHouses = houses.filter(h => h.side === side);
+        sideHouses.forEach(h => {
+          if (h.y > H + 90) {
+            const highestY = Math.min(...sideHouses.filter(other => other !== h).map(other => other.y));
+            h.y = highestY - spacing;
+            h.drivewayY = h.y + 42;
+          }
+        });
+      });
+    }
+
+    function drivewayForHouse(h) {
+      const y = h.y + 42;
+      if (h.side === 'left') {
+        return {
+          x: h.drivewayX,
+          y,
+          w: roadX - h.drivewayX,
+          h: 22,
+          carStartX: h.drivewayX + 4,
+          carY: y - 5
+        };
+      }
+      return {
+        x: roadX + roadW,
+        y,
+        w: h.drivewayX - (roadX + roadW) + 22,
+        h: 22,
+        carStartX: h.drivewayX - 44,
+        carY: y - 5
+      };
     }
 
     function spawnObstacle(difficulty) {
@@ -429,7 +481,7 @@
         obs.w = 58;
         obs.h = 96;
         obs.x = xCenter - obs.w / 2;
-        obs.speed = 150 + difficulty * 55;
+        obs.speed = 158 + difficulty * 50;
         obs.variant = Math.random() < .5 ? 'mowerTrailer' : 'openTrailer';
       }
 
@@ -437,21 +489,24 @@
         obs.w = 46;
         obs.h = 44;
         obs.x = xCenter - obs.w / 2;
+        obs.speed = 158 + difficulty * 50;
       }
 
       if (type === 'driveway') {
         obs.w = 64;
         obs.h = 34;
+        const usedHouseIndexes = new Set(obstacles.filter(o => o.type === 'driveway').map(o => o.houseIndex));
         const candidates = houses
           .map((h, i) => ({ h, i }))
-          .filter(item => item.h.y > -95 && item.h.y < 250);
+          .filter(item => item.h.y > -95 && item.h.y < 250 && !usedHouseIndexes.has(item.i));
         const picked = candidates.length ? candidates[Math.floor(Math.random() * candidates.length)] : { h: houses[Math.floor(Math.random() * houses.length)], i: 0 };
         const h = picked.h;
         obs.houseIndex = picked.i;
         obs.side = h.side;
         obs.drivewayOffsetY = -5;
-        obs.y = h.y + 39 + obs.drivewayOffsetY;
-        obs.startX = obs.side === 'left' ? h.x + 28 : h.x - 36;
+        const d = drivewayForHouse(h);
+        obs.y = d.carY;
+        obs.startX = d.carStartX;
         // Stop halfway into the curb lane; it should feel like a driveway car, not cross traffic.
         obs.targetX = obs.side === 'left' ? roadX - 8 : roadX + roadW - obs.w + 8;
         obs.x = obs.startX;
@@ -496,27 +551,6 @@
       );
     }
 
-    function keepDrivewayCarsOffDogWalkers() {
-      const dogs = obstacles.filter(o => o.type === 'dogwalker');
-      const drivewayCars = obstacles.filter(o => o.type === 'driveway');
-
-      drivewayCars.forEach(car => {
-        dogs.forEach(dog => {
-          if (expandedOverlap(car, dog, 8, 6)) {
-            // Back the car toward its driveway just enough to reveal the walker/dog.
-            if (car.side === 'left') {
-              car.x = Math.max(car.startX, dog.x - car.w - 6);
-            } else {
-              car.x = Math.min(car.startX, dog.x + dog.w + 6);
-            }
-            car.progress = Math.min(1, Math.abs(car.x - car.startX) / Math.max(1, Math.abs(car.targetX - car.startX)));
-          }
-        });
-      });
-    }
-
-
-
     function obstacleSafeBox(o) {
       const pad = o.type === 'dogwalker' ? 8 : 6;
       return { x: o.x - pad, y: o.y - pad, w: o.w + pad * 2, h: o.h + pad * 2 };
@@ -527,26 +561,16 @@
     }
 
     function separateOverlappingObstacles() {
-      // Keep obstacle sprites from stacking on one another without changing the artwork.
-      for (let pass = 0; pass < 3; pass++) {
-        for (let i = 0; i < obstacles.length; i++) {
-          for (let j = i + 1; j < obstacles.length; j++) {
-            const a = obstacles[i];
-            const b = obstacles[j];
-            if (!obstaclesTooClose(a, b)) continue;
-
-            // Driveway cars are tied to houses, so pull them back toward the driveway instead of pushing pedestrians/trucks around.
-            if (a.type === 'driveway') {
-              a.x += a.side === 'left' ? -10 : 10;
-              clampDrivewayCar(a);
-            } else if (b.type === 'driveway') {
-              b.x += b.side === 'left' ? -10 : 10;
-              clampDrivewayCar(b);
-            } else {
-              // Same-road hazards get vertical spacing. The lower object continues; the upper object waits farther up-road.
-              const upper = a.y < b.y ? a : b;
-              upper.y -= 10;
-            }
+      // No per-frame pushing. That made objects visibly jump when they touched.
+      // Only remove duplicate driveway cars if two are somehow attached to the same visual space.
+      for (let i = obstacles.length - 1; i >= 0; i--) {
+        const a = obstacles[i];
+        if (a.type !== 'driveway') continue;
+        for (let j = i - 1; j >= 0; j--) {
+          const b = obstacles[j];
+          if (b.type === 'driveway' && obstaclesTooClose(a, b)) {
+            obstacles.splice(i, 1);
+            break;
           }
         }
       }
@@ -611,17 +635,16 @@
       px(roadX + roadW, 0, 2, H, '#9ca3af');
 
       houses.forEach(h => {
-        const drivewayY = h.y + 39;
+        const d = drivewayForHouse(h);
+        px(d.x, d.y, d.w, d.h, '#b8bdc4');
         if (h.side === 'left') {
-          px(h.x + 26, drivewayY, roadX - (h.x + 26), 22, '#b8bdc4');
-          px(h.x + 29, drivewayY + 3, roadX - (h.x + 33), 4, '#a1a1aa');
-          px(h.x + 29, drivewayY + 16, roadX - (h.x + 37), 3, '#9ca3af');
-          px(roadX - 8, drivewayY + 1, 8, 20, '#c7ccd3');
+          px(d.x + 3, d.y + 3, Math.max(0, d.w - 7), 4, '#a1a1aa');
+          px(d.x + 3, d.y + 16, Math.max(0, d.w - 11), 3, '#9ca3af');
+          px(roadX - 8, d.y + 1, 8, 20, '#c7ccd3');
         } else {
-          px(roadX + roadW, drivewayY, h.x - (roadX + roadW) + 22, 22, '#b8bdc4');
-          px(roadX + roadW + 4, drivewayY + 3, h.x - (roadX + roadW) + 14, 4, '#a1a1aa');
-          px(roadX + roadW + 8, drivewayY + 16, h.x - (roadX + roadW) + 10, 3, '#9ca3af');
-          px(roadX + roadW, drivewayY + 1, 8, 20, '#c7ccd3');
+          px(d.x + 4, d.y + 3, Math.max(0, d.w - 8), 4, '#a1a1aa');
+          px(d.x + 8, d.y + 16, Math.max(0, d.w - 12), 3, '#9ca3af');
+          px(roadX + roadW, d.y + 1, 8, 20, '#c7ccd3');
         }
       });
     }
@@ -655,10 +678,10 @@
         px(h.x + 36, h.y + 19, 11, 2, '#1f2937');
         px(h.x + 22, h.y + 22, 11, 20, '#422006');
         px(h.x + 30, h.y + 31, 2, 2, '#facc15');
-        px(h.x + 3, h.y + 34, 12, 8, '#374151');
-        px(h.x + 36, h.y + 34, 13, 8, '#374151');
-        px(h.x + 5, h.y + 36, 8, 2, '#f9fafb');
-        px(h.x + 38, h.y + 36, 9, 2, '#f9fafb');
+        // garage/driveway edge is fixed to the driveway anchor
+        px(h.drivewayX - h.x, h.y + 33, 22, 9, '#374151');
+        px(h.drivewayX - h.x + 2, h.y + 35, 18, 2, '#f9fafb');
+        px(h.drivewayX - h.x + 2, h.y + 39, 18, 2, '#9ca3af');
       });
     }
 
@@ -842,7 +865,8 @@
     }
 
     function drawBackingOutCar(o) {
-      const facingRight = o.side === 'left';
+      // Cars are backing out: the rear/tail-light side faces the street.
+      const backingTowardRight = o.side === 'left';
       const x = Math.round(o.x), y = Math.round(o.y);
       const body = o.color || '#2563eb';
       const darkBody = shade(body, -50);
@@ -859,7 +883,7 @@
         }
         // shadow
         px(cx + 4, cy + 5, 58, 28, '#0000002f');
-        // car pointing out of driveway, horizontal top-down form
+        // horizontal top-down form; base sprite has tail lights on the left and headlights on the right
         px(cx + 4, cy + 9, 7, 16, darkBody);       // rear taper
         px(cx + 10, cy + 5, 38, 24, body);         // main body
         px(cx + 48, cy + 9, 10, 16, darkBody);     // nose/front
@@ -881,7 +905,7 @@
         px(cx + 42, cy + 30, 6, 2, '#475569');
         ctx.restore();
       };
-      drawCar(x, y, !facingRight);
+      drawCar(x, y, backingTowardRight);
     }
 
     function carPalette(body, roof) {
