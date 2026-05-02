@@ -178,6 +178,61 @@
     let gameState = 'start';
     let player, obstacles, houses, lawnDetails;
     let score, timeLeft, lastTime, spawnTimer, animationId, elapsed;
+    let audioCtx, musicTimer, audioStarted = false;
+
+
+
+    function initAudio() {
+      if (audioStarted) return;
+      audioStarted = true;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      startMusic();
+    }
+
+    function playTone(freq, duration = .08, type = 'square', gainValue = .035) {
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0, audioCtx.currentTime);
+      gain.gain.linearRampToValueAtTime(gainValue, audioCtx.currentTime + .01);
+      gain.gain.exponentialRampToValueAtTime(.001, audioCtx.currentTime + duration);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + duration + .02);
+    }
+
+    function startMusic() {
+      if (!audioCtx || musicTimer) return;
+      const melody = [196, 247, 294, 247, 220, 262, 330, 262, 196, 247, 294, 370, 330, 294, 247, 220];
+      const bass = [98, 98, 110, 110, 131, 131, 123, 123];
+      let step = 0;
+      musicTimer = setInterval(() => {
+        if (gameState !== 'playing') return;
+        playTone(melody[step % melody.length], .075, 'square', .026);
+        if (step % 2 === 0) playTone(bass[(step / 2) % bass.length], .11, 'triangle', .022);
+        if (step % 4 === 2) playTone(740, .025, 'square', .012);
+        step++;
+      }, 150);
+    }
+
+    function stopMusic() {
+      if (musicTimer) {
+        clearInterval(musicTimer);
+        musicTimer = null;
+      }
+    }
+
+    function playCrashSound() {
+      playTone(90, .18, 'sawtooth', .06);
+      setTimeout(() => playTone(55, .18, 'sawtooth', .045), 60);
+    }
+
+    function playWinSound() {
+      [262, 330, 392, 523].forEach((f, i) => setTimeout(() => playTone(f, .13, 'square', .045), i * 90));
+    }
 
     function resetGame() {
       player = { x: lanes[1] - 17, y: H - 94, w: 34, h: 56, speed: 220 };
@@ -223,6 +278,8 @@
     }
 
     function startGame() {
+      initAudio();
+      startMusic();
       resetGame();
       gameState = 'playing';
       startScreen.classList.add('hidden');
@@ -233,6 +290,8 @@
 
     function endGame(won = false) {
       gameState = 'over';
+      stopMusic();
+      won ? playWinSound() : playCrashSound();
       cancelAnimationFrame(animationId);
       finalScoreEl.textContent = score;
       gameOverTitle.textContent = won ? 'You Made It' : 'Game Over';
@@ -333,9 +392,9 @@
 
       obstacles = obstacles.filter(obs => obs.y < H + 90 && obs.y > -130 && obs.x > -90 && obs.x < W + 90);
 
-      // Final safeguard: if a dog walker and driveway car get too close because of scrolling,
-      // pull the driveway car slightly back toward its driveway instead of letting it cover the pedestrian.
+      // Final safeguards: keep all moving neighborhood hazards from visually colliding.
       keepDrivewayCarsOffDogWalkers();
+      separateOverlappingObstacles();
 
       for (const obs of obstacles) {
         if (isColliding(player, obs)) {
@@ -402,7 +461,18 @@
         obs.roof = ['#4c1d95', '#1e40af', '#991b1b', '#115e59', '#111827'][Math.floor(Math.random()*5)];
       }
 
-      obstacles.push(obs);
+      if (spawnAreaIsClear(obs)) {
+        obstacles.push(obs);
+      } else if (type !== 'driveway') {
+        const clearLane = lanes.find(laneCenter => {
+          const test = { ...obs, x: laneCenter - obs.w / 2 };
+          return spawnAreaIsClear(test);
+        });
+        if (clearLane) {
+          obs.x = clearLane - obs.w / 2;
+          obstacles.push(obs);
+        }
+      }
     }
 
     function isColliding(a, b) {
@@ -443,6 +513,56 @@
           }
         });
       });
+    }
+
+
+
+    function obstacleSafeBox(o) {
+      const pad = o.type === 'dogwalker' ? 8 : 6;
+      return { x: o.x - pad, y: o.y - pad, w: o.w + pad * 2, h: o.h + pad * 2 };
+    }
+
+    function obstaclesTooClose(a, b) {
+      return rectOverlap(obstacleSafeBox(a), obstacleSafeBox(b));
+    }
+
+    function separateOverlappingObstacles() {
+      // Keep obstacle sprites from stacking on one another without changing the artwork.
+      for (let pass = 0; pass < 3; pass++) {
+        for (let i = 0; i < obstacles.length; i++) {
+          for (let j = i + 1; j < obstacles.length; j++) {
+            const a = obstacles[i];
+            const b = obstacles[j];
+            if (!obstaclesTooClose(a, b)) continue;
+
+            // Driveway cars are tied to houses, so pull them back toward the driveway instead of pushing pedestrians/trucks around.
+            if (a.type === 'driveway') {
+              a.x += a.side === 'left' ? -10 : 10;
+              clampDrivewayCar(a);
+            } else if (b.type === 'driveway') {
+              b.x += b.side === 'left' ? -10 : 10;
+              clampDrivewayCar(b);
+            } else {
+              // Same-road hazards get vertical spacing. The lower object continues; the upper object waits farther up-road.
+              const upper = a.y < b.y ? a : b;
+              upper.y -= 10;
+            }
+          }
+        }
+      }
+    }
+
+    function clampDrivewayCar(car) {
+      if (car.side === 'left') {
+        car.x = Math.max(car.startX, Math.min(car.targetX, car.x));
+      } else {
+        car.x = Math.min(car.startX, Math.max(car.targetX, car.x));
+      }
+      car.progress = Math.min(1, Math.abs(car.x - car.startX) / Math.max(1, Math.abs(car.targetX - car.startX)));
+    }
+
+    function spawnAreaIsClear(obs) {
+      return !obstacles.some(other => obstaclesTooClose(obs, other));
     }
 
     function draw() {
