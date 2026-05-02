@@ -252,13 +252,8 @@
         houses.push(makeHouse('right', y + 59));
       }
 
-      for (let i = 0; i < 36; i++) {
-        lawnDetails.push({
-          x: Math.random() < .5 ? rand(8, roadX - 22) : rand(roadX + roadW + 22, W - 18),
-          y: rand(-40, H + 40),
-          type: ['bush','tree','mailbox','trash','flower'][Math.floor(Math.random() * 5)],
-          phase: Math.random() * 80
-        });
+      for (let i = 0; i < 34; i++) {
+        lawnDetails.push(makeLawnDetail(lawnDetails));
       }
 
       updateHud();
@@ -289,6 +284,86 @@
         roof:p.roof,
         trim:p.trim
       };
+    }
+
+
+    function lawnDetailSize(type) {
+      if (type === 'tree') return { w: 18, h: 30 };
+      if (type === 'mailbox') return { w: 16, h: 22 };
+      if (type === 'trash') return { w: 13, h: 21 };
+      if (type === 'flower') return { w: 13, h: 15 };
+      return { w: 18, h: 15 };
+    }
+
+    function lawnDetailRect(d) {
+      const s = lawnDetailSize(d.type);
+      return { x: d.x - 3, y: d.y - 4, w: s.w + 6, h: s.h + 8 };
+    }
+
+    function houseBlockRect(h) {
+      return { x: h.x - 8, y: h.y - 20, w: h.w + 16, h: h.h + 28 };
+    }
+
+    function drivewayBlockRect(h) {
+      const d = drivewayForHouse(h);
+      return { x: d.x - 5, y: d.y - 7, w: d.w + 10, h: d.h + 14 };
+    }
+
+    function makeLawnDetail(existing = []) {
+      const d = {};
+      repositionLawnDetail(d, existing, true);
+      return d;
+    }
+
+    function repositionLawnDetail(d, existing = [], anywhere = false) {
+      const types = ['bush','tree','mailbox','trash','flower'];
+      for (let tries = 0; tries < 80; tries++) {
+        const side = Math.random() < .5 ? 'left' : 'right';
+        const type = types[Math.floor(Math.random() * types.length)];
+        const size = lawnDetailSize(type);
+        let x;
+
+        // Mailboxes belong near the sidewalk. Other lawn objects stay closer to the houses/yards.
+        if (type === 'mailbox') {
+          x = side === 'left' ? rand(roadX - 43, roadX - 25) : rand(roadX + roadW + 13, roadX + roadW + 29);
+        } else if (side === 'left') {
+          x = rand(7, roadX - sidewalkW - size.w - 14);
+        } else {
+          x = rand(roadX + roadW + sidewalkW + 9, W - size.w - 7);
+        }
+
+        const y = anywhere ? rand(-44, H + 20) : rand(-92, -36);
+        const test = { x, y, type, side, phase: Math.random() * 80 };
+        if (lawnSpotIsClear(test, existing)) {
+          Object.assign(d, test);
+          return;
+        }
+      }
+
+      const side = Math.random() < .5 ? 'left' : 'right';
+      const type = 'bush';
+      Object.assign(d, {
+        x: side === 'left' ? 8 : W - 24,
+        y: anywhere ? rand(-44, H + 20) : -48,
+        type,
+        side,
+        phase: Math.random() * 80
+      });
+    }
+
+    function lawnSpotIsClear(test, existing = []) {
+      const r = lawnDetailRect(test);
+      if (r.x < 0 || r.x + r.w > W) return false;
+      if (r.x + r.w > roadX - 6 && r.x < roadX + roadW + 6) return false;
+
+      for (const h of houses) {
+        if (rectOverlap(r, houseBlockRect(h)) || rectOverlap(r, drivewayBlockRect(h))) return false;
+      }
+      for (const other of existing) {
+        if (other === test || other.x === undefined) continue;
+        if (rectOverlap(r, lawnDetailRect(other))) return false;
+      }
+      return true;
     }
 
     function startGame() {
@@ -356,10 +431,7 @@
 
       lawnDetails.forEach(d => {
         d.y += worldSpeed * dt;
-        if (d.y > H + 30) {
-          d.y = -40;
-          d.x = Math.random() < .5 ? rand(8, roadX - 22) : rand(roadX + roadW + 22, W - 18);
-        }
+        if (d.y > H + 34) repositionLawnDetail(d, lawnDetails);
       });
 
       spawnTimer -= dt;
@@ -592,9 +664,9 @@
     function draw() {
       ctx.clearRect(0, 0, W, H);
       drawGrass();
+      drawLawnDetails();
       drawSidewalksAndDriveways();
       drawHouses();
-      drawLawnDetails();
       drawRoad();
       obstacles.forEach(drawObstacle);
       drawPlayer();
@@ -679,9 +751,10 @@
         px(h.x + 22, h.y + 22, 11, 20, '#422006');
         px(h.x + 30, h.y + 31, 2, 2, '#facc15');
         // garage/driveway edge is fixed to the driveway anchor
-        px(h.drivewayX - h.x, h.y + 33, 22, 9, '#374151');
-        px(h.drivewayX - h.x + 2, h.y + 35, 18, 2, '#f9fafb');
-        px(h.drivewayX - h.x + 2, h.y + 39, 18, 2, '#9ca3af');
+        const garageX = h.drivewayX;
+        px(garageX, h.y + 33, 22, 9, '#374151');
+        px(garageX + 2, h.y + 35, 18, 2, '#f9fafb');
+        px(garageX + 2, h.y + 39, 18, 2, '#9ca3af');
       });
     }
 
