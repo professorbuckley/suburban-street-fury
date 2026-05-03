@@ -232,6 +232,7 @@
     let player, obstacles, houses, lawnDetails;
     let score, timeLeft, lastTime, spawnTimer, animationId, elapsed;
     let audioCtx, musicTimer, audioStarted = false;
+    let masterVolume = 4;
 
 
 
@@ -249,7 +250,7 @@
       osc.type = type;
       osc.frequency.value = freq;
       gain.gain.setValueAtTime(0, audioCtx.currentTime);
-      gain.gain.linearRampToValueAtTime(gainValue, audioCtx.currentTime + .01);
+      gain.gain.linearRampToValueAtTime(gainValue * masterVolume, audioCtx.currentTime + .01);
       gain.gain.exponentialRampToValueAtTime(.001, audioCtx.currentTime + duration);
       osc.connect(gain);
       gain.connect(audioCtx.destination);
